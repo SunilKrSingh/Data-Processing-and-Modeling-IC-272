@@ -1,5 +1,5 @@
 # data_science_3
-This repository contains assignments of <strong>Data-Science</strong> course done by me in python.<br>
+This repository contains assignments of course <strong>Data-Science(Data Processing and Modeling)</strong> course done by me in python.<br>
 
 The libraries used:
 <ol>
