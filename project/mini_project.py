@@ -37,6 +37,8 @@ Dependent Attribute: InBandwidth
 Predictive Analytics: Regressive Analysis
 
 """
+
+
 #importing required libraries
 import statistics as st
 import pandas as pd
@@ -66,6 +68,9 @@ import scipy.stats as st
 from sklearn.metrics import mean_squared_error
 import seaborn as ss
 from sklearn.decomposition import PCA
+from statsmodels.tsa.ar_model import AR
+from pandas.plotting import autocorrelation_plot
+import statsmodels.api as sm
 
 #Function to read .csv file
 def read_data(path):
@@ -74,6 +79,9 @@ def read_data(path):
 #Function to show informations of the data
 def info(df):
     print(df.describe())
+
+def boxplt(data):
+    plt.boxplot(data)
 
 #Function to print accuracy using RMSE Values
 def prediction_accuracy(y_true, y_pred):
@@ -107,7 +115,13 @@ def outlier_detection(df):
 #Function to  plot boxplot of the data
 def boxplt(data):
     plt.boxplot(data)
-    
+
+def boxplot(norma_df,norma_df_wtdout):  ## pass both normalised actual and outlier removed
+    norma_df.boxplot(vert=True,rot=45)
+    plt.show()
+    norma_df_wtdout.boxplot(vert=True,rot=45)
+    plt.show()
+
 ###############################################################
 #Function to Z-normalise the data
 def standardization(data):
@@ -226,7 +240,9 @@ def mul_lin_reg(train,test):
     pred = model.predict(test)
     pred_train=model.predict(train)
     print("rmse of test data : ",prediction_accuracy(actual,pred))
+    print(metrics.r2_score(actual,pred))
     print("rmse of train data : ",prediction_accuracy(Y,pred_train),'\n')
+    print(metrics.r2_score(actual,pred))
     plt.scatter(actual,pred , color = "blue",  label = 'Test data')
     plt.xlabel('original InBandwidth')
     plt.ylabel('predicted InBandwidth')
@@ -279,8 +295,12 @@ def poly_on_range(trainX,testX,start, end):
         reg = LinearRegression()
         reg.fit(new_x,Y)
         pred = reg.predict(new_test)
-        RMSEs_onTest.append(sqrt(metrics.mean_squared_error(actual,pred)))
-        RMSEs_onTrain.append(sqrt(metrics.mean_squared_error(Y,reg.predict(new_x))))
+        RMSEs_onTest.append(prediction_accuracy(actual,pred))
+        print("rmse test : ",prediction_accuracy(actual,pred))
+        print(metrics.r2_score(actual,pred))
+        RMSEs_onTrain.append(prediction_accuracy(Y,reg.predict(new_x)))
+        print("rmse train : ",prediction_accuracy(Y,reg.predict(new_x)),'\n')
+        print(metrics.r2_score(Y,reg.predict(new_x)))
     plt.plot(Range, RMSEs_onTest)
     plt.title("RMSE vs. Degree of Polynomial(Test Data)")
     plt.ylabel("RMSE")
@@ -338,6 +358,25 @@ def corr_lin(data,X_train,X_test):
     ax.set_zlabel("InBandwidth")
     plt.show()
 
+def auto_regression(df):
+    train,test= split_for_reg(df['InBandwidth'])
+    model=AR(train)
+    model_fit=model.fit()
+    print('lag:',model_fit.k_ar)
+    predict_ar=model_fit.predict(start=len(train),end=len(train)+len(test)-1,dynamic=False)
+    error=prediction_accuracy(test,predict_ar)
+    print("rmse",error)
+
+def plot_acf(df):
+    data=df[['InBandwidth']]
+    #plt.plot(data)
+    #plt.show()
+
+    print("acf plot")
+    sm.graphics.tsa.plot_acf(data,lags=40)
+    plt.show()
+
+
 
 def main():
     #Reading .csv file
@@ -355,62 +394,97 @@ def main():
     df1 = replace_outlier(data)
     print("\nOutlier counts after replacing outliers:")
     outlier_detection(df1)
-    #info(df1) 
+    info(df1)
     
     #================== pre-processing on data ==================#
     
     #Operationns on outlier removed dataframe
     stand_df = standardization(df1)     #Z-normalised data
     norma_df = normalise(df1,1,0)       #min-max-normalised data
+    norma_df_wtdout=normalise(df1,1,0) ### normalise after outlier removal
     data_pca = PcA(data,2)              #PCA applied data
     print_corr(data)                    #Correlation analysis with target as inbandwidth column
     data_FS=feature_selection(data)     #Feature selection on data
-    
+    boxplot(norma_df,norma_df_wtdout)
+    pd.plotting.lag_plot(data["InBandwidth"],marker = "*")
+    plt.show()
+
+    r = pd.DataFrame(pd.to_datetime(data["CreationTime"]))
+    r.columns = ["CreationTime"]
+    r['new_date'] = [d.date() for d in r["CreationTime"]]
+    r['new_time'] = [d.time() for d in r["CreationTime"]]
+    r["InTotalPPS"]=data["InTotalPPS"]
+    df = r.groupby('new_date')
+    dat = df.get_group('2018-10-12')
+    #print(dat)
+    plt.plot(dat["new_time"],dat["InTotalPPS"])
+    plt.title("variation of active users on 2018-10-12 ")
+    plt.xlabel("time variation ")
+    plt.ylabel("ActiveCount")
+    plt.show()
     #================= data predictive analysis =================#
-    
+
     #results with original datasets when replaced with outliers
     train,test = split_for_reg(data)
     print("\nMultiple Linear Regression on untreated data\n")
     mul_lin_reg(train.copy(),test.copy())
     print("Polynomial curve fitting on untreated data")
-    poly_on_range(train.copy(),test.copy(),1,5)
+    poly_on_range(train.copy(),test.copy(),2,5)
 
     #results with preprocessed datasets when replaced with outliers
     trainP,testP = split_for_reg(df1)
     print("\nMultiple Linear Regression on data without outliers\n")
     mul_lin_reg(trainP.copy(),testP.copy())
     print("Polynomial curve fitting on data without outliers\n")
-    poly_on_range(trainP.copy(),testP.copy(),1,5)
+    poly_on_range(trainP.copy(),testP.copy(),2,5)
 
     #resuls on standardized data
     trainS,testS = split_for_reg(stand_df)
     print("\nMultiple Linear Regression on standardized data\n")
     mul_lin_reg(trainS.copy(),testS.copy())
     print("Polynomial curve fitting on standardized data")
-    poly_on_range(trainS.copy(),testS.copy(),1,5)
+    poly_on_range(trainS.copy(),testS.copy(),2,5)
 
     #results on normalized data
     trainN,testN = split_for_reg(norma_df)
     print("\nMultiple Linear Regression on normalized data\n")
     mul_lin_reg(trainN.copy(),testN.copy())
     print("Polynomial curve fitting on normalized data")
-    poly_on_range(trainN.copy(),testN.copy(),1,5)
+    poly_on_range(trainN.copy(),testN.copy(),2,5)
 
     #results after feature selection
     trainFS,testFS = split_for_reg(data_FS)
     print("\nMultiple Linear Regression on data after feature selection\n")
     mul_lin_reg(trainFS.copy(),testFS.copy())
     print("Polynomial curve fitting on data after feature selection")
-    poly_on_range(trainFS.copy(),testFS.copy(),1,5)
+    poly_on_range(trainFS.copy(),testFS.copy(),2,5)
 
     #results after PCA
     trainPCA,testPCA = split_for_reg(data_pca)
     print("\nMultiple Linear Regression on data after pca\n")
     mul_lin_reg(trainPCA.copy(),testPCA.copy())
     print("Polynomial curve fitting on data after pca")
-    poly_on_range(trainPCA.copy(),testPCA.copy(),1,5)
+    poly_on_range(trainPCA.copy(),testPCA.copy(),2,5)
 
     corr_lin(data,train,test)
+
+    #resuls after Auto regression
+    print("Auto regression on original data")
+    auto_regression(data) #on original data
+    plot_acf(data)
+    print("\nAuto regression on standardized data")
+    auto_regression(stand_df) #on standardized data
+    plot_acf(stand_df)
+    print("\nAuto regression on normalized data")
+    auto_regression(norma_df) #on normalized data
+    plot_acf(norma_df)
+    print("\nAuto regression on data after outlier removal")
+    auto_regression(df1) #on data after replacing qutlier
+    plot_acf(df1)
+    print("\nAuto regression on data after feature selection")
+    auto_regression(data_FS) #on data after feature selection
+    plot_acf(data_FS)
+
 
 if __name__ == "__main__":
     main()
